@@ -4,6 +4,24 @@ library(readr)
 library(openxlsx)
 library(jsonlite)
 
+# --- 新增：欄位名稱標準化函數 (容忍大小寫與 sp 替換) ---
+standardize_colnames <- function(df) {
+  c_names <- names(df)
+  c_names_lower <- tolower(c_names)
+  
+  # 不管原本長怎樣，只要轉小寫後符合，就強制換成我們程式碼看得懂的標準名稱
+  c_names[c_names_lower == "x1"] <- "X1"
+  c_names[c_names_lower == "y1"] <- "Y1"
+  c_names[c_names_lower == "x2"] <- "X2"
+  c_names[c_names_lower == "y2"] <- "Y2"
+  c_names[c_names_lower == "tag"] <- "TAG"
+  c_names[c_names_lower == "b"] <- "b"
+  c_names[c_names_lower %in% c("name", "sp")] <- "Name" # 將 name 或 sp 都統一為 Name
+  
+  names(df) <- c_names
+  return(df)
+}
+
 # --- 核心函數：完整版 (保留 X2, Y2 象限邏輯) ---
 core_keys <- c("X1", "Y1", "X2", "Y2", "TAG", "b", "Name")
 
@@ -41,7 +59,7 @@ ui <- fluidPage(
     ),
     
     mainPanel(
-      h4("差異資料預覽 (僅顯示標記為 marks為V 的資料，沒有全部喔)"),
+      h4("錯誤資料預覽 (僅摘要顯示錯誤的資料，阿彌陀佛)"),
       tableOutput("preview_table")
     )
   )
@@ -53,10 +71,14 @@ server <- function(input, output, session) {
   app_data <- reactive({
     req(input$file1, input$file2)
     
+    # 在讀取檔案並去空白後，立刻套用 standardize_colnames 函數
     dt1 <- read_csv(input$file1$datapath, col_types = cols(.default = "c")) %>% 
-      mutate(across(everything(), trimws))
+      mutate(across(everything(), trimws)) %>% 
+      standardize_colnames()
+    
     dt2 <- read_csv(input$file2$datapath, col_types = cols(.default = "c")) %>% 
-      mutate(across(everything(), trimws))
+      mutate(across(everything(), trimws)) %>% 
+      standardize_colnames()
     
     qall1 <- process_and_mark(dt1, dt2) %>% rename(marks_dt1 = marks)
     qall2 <- process_and_mark(dt2, dt1) %>% rename(marks_dt2 = marks)
@@ -81,8 +103,8 @@ server <- function(input, output, session) {
       "第一份檔案 (dt1) 總筆數：", res[1], " 筆\n",
       "第二份檔案 (dt2) 總筆數：", res[2], " 筆\n\n",
       "兩份檔案相同的資料：", res[3], " 筆\n",
-      "dt1 獨有的差異資料：", res[4], " 筆\n",
-      "dt2 獨有的差異資料：", res[5], " 筆"
+      "dt1 有錯的資料筆數：", res[4], " 筆\n",
+      "dt2 有錯的資料筆數：", res[5], " 筆"
     )
   })
   
@@ -105,11 +127,9 @@ server <- function(input, output, session) {
     addWorksheet(wb, "比對結果")
     writeData(wb, "比對結果", df)
     
-    # 新增：建立欄位名稱底色樣式
     header_style_dt1 <- createStyle(fgFill = "#d8d8d8", textDecoration = "bold")
     header_style_dt2 <- createStyle(fgFill = "#98c4c8", textDecoration = "bold")
     
-    # 新增：依據名稱規則為第一列的標題上色
     for (i in 1:ncol(df)) {
       col_name <- names(df)[i]
       if (grepl("\\.x$", col_name) || col_name == "marks_dt1") {
@@ -119,7 +139,6 @@ server <- function(input, output, session) {
       }
     }
     
-    # 維持不變：特定的單格錯值黃色底色標示
     highlight_style <- createStyle(fgFill = "#FFFF99")
     cols_x <- grep("\\.x$", names(df), value = TRUE)
     
