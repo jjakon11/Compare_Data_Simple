@@ -103,9 +103,14 @@ server <- function(input, output, session) {
       paste0("Compare_Result_", format(Sys.Date(), "%Y%m%d"), ".csv")
     },
     content = function(file) {
-      # 使用 write_excel_csv 取代原本的 write.csv，讓 Excel 能正常讀取 UTF-8
-      write_excel_csv(app_data()$full_data, file)
-    }
+      # 加上 BOM 標記，讓中文版 Excel 打開 UTF-8 檔案時不會變亂碼
+      writeLines("\xEF\xBB\xBF", file)
+      
+      # 使用基礎函數追加寫入檔案，這在 WebAssembly 環境下最不容易崩潰
+      write.csv(app_data()$full_data, file, row.names = FALSE, fileEncoding = "UTF-8", append = TRUE)
+    },
+    # 關鍵設定：明確告訴瀏覽器這是一個 CSV 檔案，不要當成網頁存起來
+    contentType = "text/csv"
   )
 }
 
