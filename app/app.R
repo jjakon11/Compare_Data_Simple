@@ -103,11 +103,9 @@ server <- function(input, output, session) {
       paste0("Compare_Result_", format(Sys.Date(), "%Y%m%d"), ".csv")
     },
     content = function(file) {
-      # 使用 readr 內建函數，自動加上 BOM 並以 UTF-8 輸出，避免虛擬環境當機
-      readr::write_excel_csv(app_data()$full_data, file)
-    },
-    # 明確告訴瀏覽器這是一個 CSV 檔案
-    contentType = "text/csv"
+      # 放棄 readr 與任何 fileEncoding 設定，使用最基礎的寫法，確保在虛擬環境中絕對不會崩潰
+      write.csv(app_data()$full_data, file, row.names = FALSE)
+    }
   )
 }
 
