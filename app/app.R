@@ -49,13 +49,13 @@ ui <- fluidPage(
 # --- 2. 背後運算邏輯 (Server) ---
 server <- function(input, output, session) {
   
-  # 建立一個 reactive 來處理並儲存所有需要的資料與統計數字
   app_data <- reactive({
     req(input$file1, input$file2)
     
-    dt1 <- read_csv(input$file1$datapath, col_types = cols(.default = "c"), locale = locale(encoding = "Big5")) %>% 
+    # 移除 Big5 設定，使用預設的 UTF-8 讀取
+    dt1 <- read_csv(input$file1$datapath, col_types = cols(.default = "c")) %>% 
       mutate(across(everything(), trimws))
-    dt2 <- read_csv(input$file2$datapath, col_types = cols(.default = "c"), locale = locale(encoding = "Big5")) %>% 
+    dt2 <- read_csv(input$file2$datapath, col_types = cols(.default = "c")) %>% 
       mutate(across(everything(), trimws))
     
     qall1 <- process_and_mark(dt1, dt2) %>% rename(marks_dt1 = marks)
@@ -63,23 +63,18 @@ server <- function(input, output, session) {
     
     b12 <- merge(qall1, qall2, by = 0, all = TRUE, sort = FALSE)
     
-    # 計算各項統計數字
     dt1_rows <- nrow(dt1)
     dt2_rows <- nrow(dt2)
-    # 相同資料：在 qall1 中 marks 為空白的數量
     same_rows <- sum(qall1$marks_dt1 == "", na.rm = TRUE)
-    # 差異資料：在各自的結果中 marks 為 "V" 的數量
     diff_dt1 <- sum(qall1$marks_dt1 == "V", na.rm = TRUE)
     diff_dt2 <- sum(qall2$marks_dt2 == "V", na.rm = TRUE)
     
-    # 將所有算好的結果打包回傳
     list(
       full_data = b12,
       stats = c(dt1_rows, dt2_rows, same_rows, diff_dt1, diff_dt2)
     )
   })
   
-  # 新增：將統計數字輸出到網頁畫面上
   output$summary_stats <- renderText({
     res <- app_data()$stats
     paste0(
@@ -91,16 +86,10 @@ server <- function(input, output, session) {
     )
   })
   
-  # 修改：渲染表格時，只篩選出有 V 的資料來顯示
   output$preview_table <- renderTable({
     df <- app_data()$full_data
-    
-    # 篩選條件：只要 dt1 或是 dt2 其中一邊的標記是 "V" 就抓出來
-    # 使用 !is.na 避免合併時產生的 NA 造成篩選錯誤
     filtered_df <- df %>% 
       filter((!is.na(marks_dt1) & marks_dt1 == "V") | (!is.na(marks_dt2) & marks_dt2 == "V"))
-    
-    # 為了避免網頁卡頓，預覽最多只顯示前 50 筆差異
     head(filtered_df, 50)
   })
   
@@ -109,13 +98,13 @@ server <- function(input, output, session) {
     downloadButton("downloadData", "下載比對結果")
   })
   
-  # 維持不變：下載的檔案依然是完整的 full_data (包含所有 V 與空白的資料)
   output$downloadData <- downloadHandler(
     filename = function() {
       paste0("Compare_Result_", format(Sys.Date(), "%Y%m%d"), ".csv")
     },
     content = function(file) {
-      write.csv(app_data()$full_data, file, row.names = FALSE, fileEncoding = "Big5")
+      # 使用 write_excel_csv 取代原本的 write.csv，讓 Excel 能正常讀取 UTF-8
+      write_excel_csv(app_data()$full_data, file)
     }
   )
 }
