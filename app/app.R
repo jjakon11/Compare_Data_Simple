@@ -1,6 +1,8 @@
 library(shiny)
 library(dplyr)
 library(readr)
+library(openxlsx)
+library(jsonlite)
 
 # --- 核心函數：完整版 (保留 X2, Y2 象限邏輯) ---
 core_keys <- c("X1", "Y1", "X2", "Y2", "TAG", "b", "Name")
@@ -35,7 +37,6 @@ ui <- fluidPage(
       verbatimTextOutput("summary_stats"),
       
       hr(),
-      # 使用 uiOutput 來接收我們特製的 HTML 下載按鈕
       uiOutput("download_ui")
     ),
     
@@ -92,26 +93,67 @@ server <- function(input, output, session) {
     head(filtered_df, 50)
   })
   
-  # --- 使用 Data URI 絕招，徹底解決 HTML 下載問題 ---
+  # --- Excel 欄位名稱與單格錯值上色邏輯 ---
   output$download_ui <- renderUI({
-    # 如果還沒上傳檔案，顯示反灰的假按鈕
     if (is.null(input$file1) || is.null(input$file2)) {
-      return(tags$button(class = "btn btn-secondary", disabled = NA, "下載比對結果 (請先上傳資料)"))
+      return(tags$button(class = "btn btn-secondary", disabled = NA, "下載 Excel 比對結果 (請先上傳資料)"))
     }
     
     df <- app_data()$full_data
     
-    # 利用 capture.output 安全地把 DataFrame 轉成 CSV 格式的文字
-    csv_lines <- capture.output(write.csv(df, row.names = FALSE))
-    csv_str <- paste(csv_lines, collapse = "\n")
+    wb <- createWorkbook()
+    addWorksheet(wb, "比對結果")
+    writeData(wb, "比對結果", df)
     
-    # 加上 BOM 標記 (%EF%BB%BF) 並把文字編碼成網址格式，讓 Excel 不會亂碼
-    data_uri <- paste0("data:text/csv;charset=utf-8,%EF%BB%BF", URLencode(csv_str, reserved = TRUE))
+    # 新增：建立欄位名稱底色樣式
+    header_style_dt1 <- createStyle(fgFill = "#d8d8d8", textDecoration = "bold")
+    header_style_dt2 <- createStyle(fgFill = "#98c4c8", textDecoration = "bold")
     
-    # 產出一個偽裝成按鈕的超連結
-    tags$a(href = data_uri, download = paste0("Compare_Result_", format(Sys.Date(), "%Y%m%d"), ".csv"),
-           class = "btn btn-default", "下載比對結果")
+    # 新增：依據名稱規則為第一列的標題上色
+    for (i in 1:ncol(df)) {
+      col_name <- names(df)[i]
+      if (grepl("\\.x$", col_name) || col_name == "marks_dt1") {
+        addStyle(wb, "比對結果", style = header_style_dt1, rows = 1, cols = i, gridExpand = TRUE)
+      } else if (grepl("\\.y$", col_name) || col_name == "marks_dt2") {
+        addStyle(wb, "比對結果", style = header_style_dt2, rows = 1, cols = i, gridExpand = TRUE)
+      }
+    }
+    
+    # 維持不變：特定的單格錯值黃色底色標示
+    highlight_style <- createStyle(fgFill = "#FFFF99")
+    cols_x <- grep("\\.x$", names(df), value = TRUE)
+    
+    for (cx in cols_x) {
+      cy <- sub("\\.x$", ".y", cx)
+      
+      if (cy %in% names(df)) {
+        diff_rows <- which(
+          (df[[cx]] != df[[cy]]) | 
+            (is.na(df[[cx]]) & !is.na(df[[cy]])) | 
+            (!is.na(df[[cx]]) & is.na(df[[cy]]))
+        ) + 1
+        
+        if (length(diff_rows) > 0) {
+          col_idx_x <- which(names(df) == cx)
+          col_idx_y <- which(names(df) == cy)
+          
+          addStyle(wb, "比對結果", style = highlight_style, rows = diff_rows, cols = col_idx_x)
+          addStyle(wb, "比對結果", style = highlight_style, rows = diff_rows, cols = col_idx_y)
+        }
+      }
+    }
+    
+    temp_file <- tempfile(fileext = ".xlsx")
+    saveWorkbook(wb, temp_file, overwrite = TRUE)
+    
+    raw_data <- readBin(temp_file, "raw", file.info(temp_file)$size)
+    b64_str <- jsonlite::base64_enc(raw_data)
+    data_uri <- paste0("data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,", b64_str)
+    
+    tags$a(href = data_uri, download = paste0("Compare_Result_", format(Sys.Date(), "%Y%m%d"), ".xlsx"),
+           class = "btn btn-success", "下載 Excel 比對結果")
   })
 }
+
 # --- 啟動 App ---
 shinyApp(ui = ui, server = server)
