@@ -35,7 +35,8 @@ ui <- fluidPage(
       # 新增：顯示統計資訊的區塊
       verbatimTextOutput("summary_stats"),
       
-      uiOutput("download_ui")
+      hr(), # 加一條分隔線讓畫面好看一點
+      downloadButton("downloadData", "下載比對結果")
     ),
     
     mainPanel(
@@ -93,17 +94,15 @@ server <- function(input, output, session) {
     head(filtered_df, 50)
   })
   
-  output$download_ui <- renderUI({
-    req(app_data())
-    downloadButton("downloadData", "下載比對結果")
-  })
-  
+
   output$downloadData <- downloadHandler(
     filename = function() {
       paste0("Compare_Result_", format(Sys.Date(), "%Y%m%d"), ".csv")
     },
     content = function(file) {
-      # 放棄 readr 與任何 fileEncoding 設定，使用最基礎的寫法，確保在虛擬環境中絕對不會崩潰
+      req(app_data()) # 確保資料有算出來才執行下載
+      
+      # 使用最單純的寫入方式
       write.csv(app_data()$full_data, file, row.names = FALSE)
     }
   )
