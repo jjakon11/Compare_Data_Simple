@@ -2,7 +2,7 @@ library(shiny)
 library(dplyr)
 library(readr)
 
-# --- 核心函數保持不變 ---
+# --- 核心函數：完整版 (保留 X2, Y2 象限邏輯) ---
 core_keys <- c("X1", "Y1", "X2", "Y2", "TAG", "b", "Name")
 
 process_and_mark <- function(df_target, df_compare) {
@@ -35,7 +35,7 @@ ui <- fluidPage(
       verbatimTextOutput("summary_stats"),
       
       hr(),
-      # 換回 uiOutput，準備接收我們特製的 HTML 下載按鈕
+      # 使用 uiOutput 來接收我們特製的 HTML 下載按鈕
       uiOutput("download_ui")
     ),
     
@@ -92,7 +92,7 @@ server <- function(input, output, session) {
     head(filtered_df, 50)
   })
   
-  # --- 使用上次樹高 App 的 Data URI 絕招 ---
+  # --- 使用 Data URI 絕招，徹底解決 HTML 下載問題 ---
   output$download_ui <- renderUI({
     # 如果還沒上傳檔案，顯示反灰的假按鈕
     if (is.null(input$file1) || is.null(input$file2)) {
@@ -105,7 +105,7 @@ server <- function(input, output, session) {
     csv_lines <- capture.output(write.csv(df, row.names = FALSE))
     csv_str <- paste(csv_lines, collapse = "\n")
     
-    # 加上 BOM 標記 (%EF%BB%BF) 並把文字編碼成網址格式
+    # 加上 BOM 標記 (%EF%BB%BF) 並把文字編碼成網址格式，讓 Excel 不會亂碼
     data_uri <- paste0("data:text/csv;charset=utf-8,%EF%BB%BF", URLencode(csv_str, reserved = TRUE))
     
     # 產出一個偽裝成按鈕的超連結
