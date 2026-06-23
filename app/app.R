@@ -32,15 +32,14 @@ ui <- fluidPage(
       fileInput("file1", "請上傳第一份檔案 (dt1)", accept = ".csv"),
       fileInput("file2", "請上傳第二份檔案 (dt2)", accept = ".csv"),
       
-      # 新增：顯示統計資訊的區塊
       verbatimTextOutput("summary_stats"),
       
-      hr(), # 加一條分隔線讓畫面好看一點
-      downloadButton("downloadData", "下載比對結果")
+      hr(),
+      # 換回 uiOutput，準備接收我們特製的 HTML 下載按鈕
+      uiOutput("download_ui")
     ),
     
     mainPanel(
-      # 修改標題提示，讓使用者知道這只是預覽
       h4("差異資料預覽 (僅顯示標記為 marks為V 的資料，沒有全部喔)"),
       tableOutput("preview_table")
     )
@@ -53,7 +52,6 @@ server <- function(input, output, session) {
   app_data <- reactive({
     req(input$file1, input$file2)
     
-    # 移除 Big5 設定，使用預設的 UTF-8 讀取
     dt1 <- read_csv(input$file1$datapath, col_types = cols(.default = "c")) %>% 
       mutate(across(everything(), trimws))
     dt2 <- read_csv(input$file2$datapath, col_types = cols(.default = "c")) %>% 
@@ -94,19 +92,26 @@ server <- function(input, output, session) {
     head(filtered_df, 50)
   })
   
-
-  output$downloadData <- downloadHandler(
-    filename = function() {
-      paste0("Compare_Result_", format(Sys.Date(), "%Y%m%d"), ".csv")
-    },
-    content = function(file) {
-      req(app_data()) # 確保資料有算出來才執行下載
-      
-      # 使用最單純的寫入方式
-      write.csv(app_data()$full_data, file, row.names = FALSE)
+  # --- 使用上次樹高 App 的 Data URI 絕招 ---
+  output$download_ui <- renderUI({
+    # 如果還沒上傳檔案，顯示反灰的假按鈕
+    if (is.null(input$file1) || is.null(input$file2)) {
+      return(tags$button(class = "btn btn-secondary", disabled = NA, "下載比對結果 (請先上傳資料)"))
     }
-  )
+    
+    df <- app_data()$full_data
+    
+    # 利用 capture.output 安全地把 DataFrame 轉成 CSV 格式的文字
+    csv_lines <- capture.output(write.csv(df, row.names = FALSE))
+    csv_str <- paste(csv_lines, collapse = "\n")
+    
+    # 加上 BOM 標記 (%EF%BB%BF) 並把文字編碼成網址格式
+    data_uri <- paste0("data:text/csv;charset=utf-8,%EF%BB%BF", URLencode(csv_str, reserved = TRUE))
+    
+    # 產出一個偽裝成按鈕的超連結
+    tags$a(href = data_uri, download = paste0("Compare_Result_", format(Sys.Date(), "%Y%m%d"), ".csv"),
+           class = "btn btn-default", "下載比對結果")
+  })
 }
-
 # --- 啟動 App ---
 shinyApp(ui = ui, server = server)
