@@ -53,8 +53,8 @@ ui <- fluidPage(
       div(class = "alert alert-info", 
           style = "padding: 15px; margin-bottom: 20px;",
           "💡 ", strong("說明："), "資料匯入時，資料須為.csv檔，且為utf-8編碼，欄位務必要包含 ", 
-          strong("X1、Y1、X2、Y2、Tag、b"), " 以及 ", strong("Name (或 species)"), 
-          " 欄位，才能進行比對。"
+          strong("X1、Y1、X2、Y2、Tag、b"), " 以及 ", strong("Name (或 sp. 或 sp 或 species)"), 
+          " 欄位，才能進行比對(欄位名稱的大小寫沒有差)。"
       ),
       
       fileInput("file1", "請上傳第一份檔案 (dt1)", accept = ".csv"),
